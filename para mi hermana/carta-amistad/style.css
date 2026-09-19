@@ -1,0 +1,589 @@
+/* =====================================================================
+   Carta digital · Feliz Día del Amor y la Amistad
+   Mobile-first. Solo animaciones de transform/opacity (baratas en móvil).
+
+   LINEA DE TIEMPO (segundos desde que se toca "Abrir carta")
+     0.00  la solapa se abre y el sello salta
+     0.65  la carta asoma del sobre
+     1.35  el sobre baja y la carta crece hasta ocupar la pantalla
+     2.25  (data-state="open") empieza la revelación:
+           +0.05 brillos · +0.5 ramo · +1.55 personaje ·
+           +2.4 título · +3.3 frase · +4.3 botón "Volver a abrir"
+   Si cambias tiempos aquí, ajusta OPEN_AFTER_MS en script.js.
+   ===================================================================== */
+
+:root {
+  --ink: #2b2f77;
+  --ink-soft: #565b97;
+  --paper: #fffaf0;
+  --butter: #ffe7a3;
+  --honey: #f0bd50;
+  --sun: #ffd34e;
+  --cobalt: #3f68d4;
+  --dusk-1: #1f2666;
+  --dusk-2: #5a4fa6;
+  --dusk-3: #f4a48b;
+
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --sans: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+
+  /* 1 % de la altura visible (dvh evita el salto de la barra del navegador móvil) */
+  --vh: 1vh;
+}
+@supports (height: 100dvh) {
+  :root { --vh: 1dvh; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--dusk-1);
+}
+
+body {
+  overflow: hidden;
+  font-family: var(--sans);
+  color: var(--paper);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+button { font: inherit; color: inherit; }
+img, svg { display: block; }
+
+/* ---------- Escenario ---------- */
+.stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+
+.bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(90% 55% at 50% 108%, rgba(255, 206, 110, .75) 0%, rgba(255, 206, 110, 0) 70%),
+    linear-gradient(180deg, var(--dusk-1) 0%, var(--dusk-2) 58%, var(--dusk-3) 100%);
+}
+
+.star {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  animation: starTwinkle var(--dur) ease-in-out var(--delay) infinite;
+}
+
+.float-heart {
+  position: absolute;
+  left: var(--x);
+  bottom: -40px;
+  width: var(--w);
+  height: var(--w);
+  background: url("./assets/heart.svg") center / contain no-repeat;
+  opacity: 0;
+  will-change: transform;
+  animation: floatUp var(--dur) linear var(--delay) infinite;
+}
+
+/* ---------- Botones ---------- */
+.btn {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  border: 0;
+  cursor: pointer;
+  min-height: 52px;
+  padding: 0 30px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 1.06rem;
+  line-height: 1;
+  letter-spacing: .01em;
+  transition: transform .15s ease;
+}
+.btn:active { transform: scale(.96); }
+.btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+.btn-open {
+  min-width: 200px;
+  background: var(--sun);
+  color: var(--ink);
+  box-shadow: 0 10px 22px -8px rgba(255, 190, 40, .7), inset 0 -3px 0 rgba(190, 130, 0, .22);
+}
+/* anillo que "late" para invitar a tocar (solo opacity/transform) */
+.btn-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--sun);
+  pointer-events: none;
+  animation: ring 2.2s ease-out infinite;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid rgba(43, 47, 119, .28);
+  min-height: 46px;
+  min-width: 150px;
+  padding: 0 22px;
+  font-size: .98rem;
+}
+.btn-ghost:active { background: rgba(43, 47, 119, .06); }
+.btn-ghost:focus-visible { outline-color: var(--ink); }
+
+/* ---------- Sonido ---------- */
+.sound {
+  position: absolute;
+  z-index: 8;
+  top: calc(10px + var(--safe-t));
+  right: calc(10px + var(--safe-r));
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(31, 38, 102, .62);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .25);
+}
+.sound:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.sound .ico-on { display: none; }
+.sound[aria-pressed="true"] .ico-on { display: block; }
+.sound[aria-pressed="true"] .ico-off { display: none; }
+.sound[aria-pressed="true"] { background: var(--cobalt); }
+
+/* =====================================================================
+   1. INTRO · sobre cerrado
+   ===================================================================== */
+.intro {
+  --env-w: min(76vw, 340px, calc(var(--vh) * 40 * 1.4));
+  --env-h: calc(var(--env-w) / 1.4);
+
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 16px;
+}
+
+.env-group {
+  position: relative;
+  width: var(--env-w);
+  height: var(--env-h);
+  /* deja sitio arriba para la solapa abierta */
+  margin-top: calc(var(--env-h) * .3);
+  cursor: pointer;
+}
+/* sombra en el suelo */
+.env-group::after {
+  content: "";
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: -26px;
+  height: 26px;
+  background: radial-gradient(ellipse at center, rgba(12, 14, 60, .5), rgba(12, 14, 60, 0) 70%);
+  pointer-events: none;
+}
+
+.envelope {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.stage[data-state="closed"] .envelope { animation: envFloat 3.6s ease-in-out infinite alternate; }
+
+.env-back  { position: absolute; inset: 0; z-index: 1; border-radius: 9px; background: #eeb94a; }
+.env-paper {
+  position: absolute;
+  z-index: 3;
+  left: 7%; right: 7%; top: 9%; bottom: 6%;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 13px, rgba(240, 189, 80, .28) 13px 14px) 0 34px / 100% 100% no-repeat,
+    var(--paper);
+  box-shadow: 0 -2px 8px rgba(80, 50, 0, .18);
+}
+.env-front { position: absolute; inset: 0; z-index: 4; border-radius: 9px; overflow: hidden; }
+.env-front svg { width: 100%; height: 100%; }
+
+.env-flap {
+  position: absolute;
+  z-index: 5;
+  left: 0; top: 0;
+  width: 100%;
+  height: 56%;
+  border-radius: 9px 9px 0 0;
+  overflow: hidden;
+  transform-origin: 50% 0;
+}
+.env-flap svg { width: 100%; height: 100%; }
+.flap-path { fill: #ffd977; stroke: #e2ae3f; stroke-width: .7; transition: fill .3s ease; }
+
+.seal {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: 56%;
+  width: calc(var(--env-w) * .17);
+  height: calc(var(--env-w) * .17);
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 2px 3px rgba(20, 30, 90, .45));
+}
+.seal svg { width: 100%; height: 100%; }
+.stage[data-state="closed"] .seal { animation: sealBeat 1.9s ease-in-out infinite; }
+
+.intro-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+.hint {
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: clamp(1.35rem, 6.2vw, 1.75rem);
+  line-height: 1.2;
+  color: #fff3c9;
+  text-shadow: 0 2px 14px rgba(20, 20, 80, .45);
+}
+
+.noscript {
+  position: absolute;
+  z-index: 9;
+  left: 16px; right: 16px; bottom: calc(16px + var(--safe-b));
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff3c9;
+  color: var(--ink);
+  text-align: center;
+  font-size: .95rem;
+}
+
+/* =====================================================================
+   2. CARTA ABIERTA
+   ===================================================================== */
+.letter-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(12px + var(--safe-t)) calc(12px + var(--safe-r)) calc(12px + var(--safe-b)) calc(12px + var(--safe-l));
+  pointer-events: none;
+}
+
+.letter {
+  position: relative;
+  width: min(100%, 430px);
+  height: min(100%, 700px);
+  border-radius: 20px;
+  overflow: hidden;
+  outline: none;
+  background: radial-gradient(120% 80% at 50% 0%, #fffdf7 0%, var(--paper) 55%, #fdf0d6 100%);
+  box-shadow: 0 26px 50px -14px rgba(12, 14, 60, .6), inset 0 1px 0 rgba(255, 255, 255, .8);
+  /* oculta hasta que se abre */
+  visibility: hidden;
+  opacity: 0;
+}
+/* filete interior, como papel de carta */
+.letter::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 13px;
+  border: 1.5px solid rgba(240, 189, 80, .55);
+  pointer-events: none;
+}
+
+.letter-inner {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, calc(var(--vh) * 2.2), 20px);
+  padding: 26px 18px 20px;
+}
+
+/* --- brillos --- */
+.sparkles i {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  background: linear-gradient(135deg, #fff6c2, #ffbf1f);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  opacity: 0;
+}
+
+/* --- escena: ramo + personaje --- */
+.scene {
+  --H: min(calc(var(--vh) * 50), 350px, calc(min(92vw, 430px) * .86));
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: var(--H);
+  flex: 0 0 auto;
+}
+/* resplandor cálido detrás del ramo */
+.scene::before {
+  content: "";
+  position: absolute;
+  left: 46%;
+  top: 44%;
+  width: calc(var(--H) * 1.25);
+  height: calc(var(--H) * 1.25);
+  margin: calc(var(--H) * -.625) 0 0 calc(var(--H) * -.625);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 220, 90, .55) 0%, rgba(255, 220, 90, 0) 66%);
+  opacity: 0;
+}
+
+.bouquet, .stitch { position: relative; opacity: 0; will-change: transform, opacity; }
+.bouquet { transform-origin: 50% 100%; z-index: 1; }
+.bouquet img { height: var(--H); width: calc(var(--H) * .75); }
+.stitch  { transform-origin: 50% 100%; z-index: 2; margin-left: calc(var(--H) * -.14); }
+.stitch img { height: calc(var(--H) * .58); width: calc(var(--H) * .58 * .7333); }
+
+/* --- textos --- */
+.text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, calc(var(--vh) * 1.4), 12px);
+  text-align: center;
+  min-width: 0;
+}
+.title {
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 700;
+  font-size: clamp(1.55rem, 7.4vw, 2.5rem);
+  line-height: 1.12;
+  letter-spacing: -.005em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.line { display: block; opacity: 0; }
+.heart { display: inline-block; font-style: normal; margin-left: .14em; }
+.subtitle {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(.98rem, 4.2vw, 1.2rem);
+  line-height: 1.35;
+  color: var(--ink-soft);
+  text-wrap: balance;
+  opacity: 0;
+}
+.text .btn-ghost { margin-top: clamp(2px, calc(var(--vh) * 1), 10px); opacity: 0; pointer-events: none; }
+.stage.show .text .btn-ghost.ready { pointer-events: auto; }
+
+/* --- efectos (pétalos) --- */
+.fx {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+}
+.petal {
+  position: absolute;
+  top: -40px;
+  left: var(--x);
+  width: var(--w);
+  height: calc(var(--w) * 1.33);
+  opacity: 0;
+  will-change: transform;
+  animation: petalFall var(--dur) linear var(--delay) infinite;
+}
+.petal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("./assets/petal.svg") center / contain no-repeat;
+  animation: petalFlutter var(--flut) ease-in-out infinite alternate;
+}
+
+/* =====================================================================
+   COREOGRAFIA
+   ===================================================================== */
+
+/* -- Intro: aparición al cargar / al volver a abrir -- */
+.stage[data-state="closed"] .intro { animation: introIn .9s ease-out both; }
+
+/* -- Apertura (0 → 2.25 s) -- */
+.stage[data-state="opening"] .env-flap      { animation: flapOpen .75s cubic-bezier(.45, 0, .25, 1) both; }
+.stage[data-state="opening"] .flap-path     { fill: #f0bd50; transition-delay: .25s; }
+.stage[data-state="opening"] .seal          { animation: sealPop .35s ease-out both; }
+.stage[data-state="opening"] .env-paper     { animation: paperUp .7s cubic-bezier(.3, .7, .2, 1) .65s both; }
+.stage[data-state="opening"] .intro-copy    { animation: fadeOut .35s ease-out both; }
+.stage[data-state="opening"] .env-group     { animation: envAway .5s ease-in 1.35s both; }
+.stage[data-state="opening"] .letter        { animation: letterGrow .85s cubic-bezier(.2, .8, .2, 1) 1.4s both; }
+.stage[data-state="opening"] .intro         { pointer-events: none; }
+
+/* -- Carta ya abierta (o cerrándose) -- */
+.stage.show .intro   { visibility: hidden; }
+.stage.show .letter  { visibility: visible; opacity: 1; }
+.stage.show .letter-wrap { pointer-events: auto; }
+
+/* -- Revelación paso a paso -- */
+.stage.show .sparkles i {
+  animation:
+    sparkIn .9s ease-out var(--d) both,
+    sparkTwinkle 2.8s ease-in-out calc(var(--d) + 1.2s) infinite;
+}
+.stage.show .scene::before { animation: glowIn 1.6s ease-out .5s both; }
+.stage.show .bouquet       { animation: bouquetIn 1.35s cubic-bezier(.22, 1.25, .36, 1) .5s both; }
+.stage.show .stitch        { animation: stitchIn 1s cubic-bezier(.22, 1.35, .36, 1) 1.55s both; }
+.stage.show .line:nth-child(1) { animation: textUp .9s ease-out 2.4s both; }
+.stage.show .line:nth-child(2) { animation: textUp .9s ease-out 2.65s both; }
+.stage.show .heart         { animation: beat 1.7s ease-in-out 3.5s infinite; }
+.stage.show .subtitle      { animation: textUp .9s ease-out 3.3s both; }
+.stage.show .text .btn-ghost { animation: fadeIn .8s ease-out 4.3s both; }
+
+/* -- Al pulsar "Volver a abrir" -- */
+.stage[data-state="leaving"] .letter { animation: letterOut .45s ease-in both; }
+
+/* =====================================================================
+   KEYFRAMES
+   ===================================================================== */
+@keyframes introIn   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut   { to   { opacity: 0; } }
+@keyframes envFloat  { from { transform: translateY(0) rotate(-.6deg); } to { transform: translateY(-7px) rotate(.6deg); } }
+@keyframes sealBeat  { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.09); } }
+@keyframes sealPop   { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } }
+@keyframes ring      { 0% { opacity: .75; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.22, 1.5); } }
+
+@keyframes flapOpen {
+  0%   { transform: perspective(700px) rotateX(0deg);   z-index: 5; }
+  50%  { transform: perspective(700px) rotateX(90deg);  z-index: 5; }
+  51%  { z-index: 2; }
+  100% { transform: perspective(700px) rotateX(180deg); z-index: 2; }
+}
+@keyframes paperUp   { from { transform: translateY(0); } to { transform: translateY(-52%); } }
+@keyframes envAway   { to { opacity: 0; transform: translateY(46px) scale(.92); } }
+@keyframes letterGrow {
+  from { visibility: visible; opacity: 0; transform: translateY(9%) scale(.42) rotate(-1.5deg); }
+  55%  { opacity: 1; }
+  to   { visibility: visible; opacity: 1; transform: none; }
+}
+@keyframes letterOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(14px) scale(.97); } }
+
+@keyframes sparkIn {
+  from { opacity: 0; transform: scale(0) rotate(-60deg); }
+  to   { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes sparkTwinkle {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.65); }
+}
+@keyframes glowIn    { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes bouquetIn {
+  from { opacity: 0; transform: translateY(44px) scale(.5) rotate(-5deg); }
+  25%  { opacity: 1; }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes stitchIn {
+  from { opacity: 0; transform: translateY(46px) scale(.7); }
+  30%  { opacity: 1; }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes textUp    { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes beat      { 0%, 60%, 100% { transform: scale(1); } 20% { transform: scale(1.22); } 40% { transform: scale(1.05); } }
+
+@keyframes starTwinkle { 0%, 100% { opacity: 0; transform: scale(.6); } 50% { opacity: .9; transform: scale(1); } }
+@keyframes floatUp {
+  0%   { opacity: 0;   transform: translate3d(0, 0, 0) scale(.8); }
+  12%  { opacity: .75; }
+  85%  { opacity: .5; }
+  100% { opacity: 0;   transform: translate3d(var(--dx), -108vh, 0) scale(1.15); }
+}
+@keyframes petalFall {
+  0%   { opacity: 0;   transform: translate3d(0, -4vh, 0) rotate(0deg); }
+  8%   { opacity: .95; }
+  90%  { opacity: .9; }
+  100% { opacity: 0;   transform: translate3d(var(--drift), 108vh, 0) rotate(var(--rot)); }
+}
+@keyframes petalFlutter {
+  from { transform: rotate(-18deg) scaleX(1); }
+  to   { transform: rotate(22deg)  scaleX(.45); }
+}
+
+/* =====================================================================
+   HORIZONTAL (teléfono girado): sobre y carta en fila
+   ===================================================================== */
+@media (orientation: landscape) and (max-height: 560px) {
+  .intro {
+    --env-w: min(40vw, 320px, calc(var(--vh) * 44 * 1.4));
+    flex-direction: row;
+    gap: 6vw;
+  }
+  .intro-copy { align-items: flex-start; text-align: left; }
+  .hint { font-size: clamp(1.25rem, 3.4vw, 1.8rem); }
+
+  .letter { width: min(100%, 880px); height: min(100%, 480px); }
+  .letter-inner { flex-direction: row; gap: 3vw; padding: 18px 26px; }
+  .scene { --H: min(calc(var(--vh) * 74), 320px, 34vw); }
+  .text { flex: 1 1 0; }
+  .title { font-size: clamp(1.25rem, 3.4vw, 2.1rem); }
+  .subtitle { font-size: clamp(.95rem, 2vw, 1.15rem); }
+}
+
+/* Pantallas muy bajas en vertical (móviles pequeños) */
+@media (orientation: portrait) and (max-height: 600px) {
+  .intro { gap: 20px; }
+  .letter-inner { padding-top: 22px; padding-bottom: 14px; }
+  .title { font-size: clamp(1.4rem, 6.4vw, 2rem); }
+  .btn-ghost { min-height: 44px; }
+}
+
+/* =====================================================================
+   Menos movimiento: todo aparece directo, sin desplazamientos
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .stage *, .stage *::before, .stage *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    transition-delay: 0s !important;
+  }
+  .btn-open::after { display: none; }
+}
